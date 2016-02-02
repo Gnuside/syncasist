@@ -1,0 +1,10 @@
+<src/lib> or <src>: include
+<**/*.ml> or <**/*.mli> or <**/*.mlpack> or <**/*.ml.depends>: ocaml, package(unix, csv, str, ISO8601)
+<**/*.byte>: ocaml, byte, program, package(unix, csv, str, ISO8601)
+<**/*.odoc>: ocaml, doc
+<**/*.native>: ocaml, native, program, package(unix, csv, str, ISO8601)
+<**/*.cma>: ocaml, byte, library, package(unix, csv, str, ISO8601)
+<**/*.cmxa>: ocaml, native, library, package(unix, csv, str, ISO8601)
+<**/*.cmo>: ocaml, byte
+<**/*.cmi>: ocaml, byte, native
+<**/*.cmx>: ocaml, native
