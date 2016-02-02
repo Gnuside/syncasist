@@ -1,15 +1,12 @@
-#!/usr/bin/env ocamlscript
-Ocaml.packs := [ "unix" ; "csv" ; "str" ; "ISO8601" ; "commands" ; "qnap_actions" ]
---
 open Commands
 open Printf
 open ISO8601
 open Str
 
 let get_file_i f =
-  let file_re = regexp "[0-9]\+\(-\([0-9]\)\)\.csv" in
+  let file_re = regexp "[0-9]\\+\\(-\\([0-9]\\)\\)\\.csv" in
   if (string_match file_re f 0) then
-    int_of_string (matched_group f 2)
+    int_of_string (matched_group 2 f)
   else 0
 ;;
 
@@ -21,12 +18,13 @@ let get_all_csv csv_path date =
   (* use current directory as copy destination *)
   and dst_dir = Direct(".") in
   (* copy the files from where they are to destination directory *)
-  ignore(copy (add_to_path csv_path filesPattern) dst_dir);
+  ignore(copy (append_to_path csv_path filesPattern) dst_dir);
   (* return the list of files we got sorted by creation date *)
   List.sort (fun f1 f2 -> Pervasives.compare (get_file_i f1) (get_file_i f2)) (ls dst_dir)
 
 (* create a file listing of the folder corresponding to a folder to rsync *)
-and make_file_listing_folder folder files_list =
+and make_file_listing_folder folder actions_list =
+  let files_list = List.map Qnap_actions.get_acc_res actions_list in
   (* Generate file listing for rsync from one file path *)
   let make_file_listing oc folder file_path =
     (* first remove folder name from file_path *)
@@ -62,7 +60,7 @@ let push_from_csv csv_file =
       | folder::other_folders -> begin
         try
           (* Try to truncate the path with the folder *)
-          let n_action = headcut_resource_path action folder in
+          let n_action = Qnap_actions.headcut_resource_path action folder in
           (folder, n_action)
         with Not_found ->
           (* if the exception Not_found is raised, then folder is not matching *)
@@ -70,9 +68,10 @@ let push_from_csv csv_file =
       end
     in
     match folders with
-    | [] ->
+    | [] -> begin
         try Hashtbl.replace h "" (action :: (Hashtbl.find h ""))
         with Not_found -> Hashtbl.add h "" [action]
+      end
     | folders -> begin
       try
         let (folder, n_action) = find_and_truncate_path action folders in
@@ -127,12 +126,12 @@ let csv_files = get_all_csv !csv_path !since in
 (* Get the files from all the csv_files *)
 List.iter (push_from_csv) csv_files;
 
-Hashtbl.iter (fun folder files -> printf "Got %d files to sync for folder: %s.\n" (List.length files) folder) files_to_sync;
+Hashtbl.iter (fun folder actions -> printf "Got %d files to sync for folder: %s.\n" (List.length actions) folder) files_to_sync;
 Hashtbl.iter make_file_listing_folder files_to_sync;
 (* creating path from rsync_src and rsync_dst *)
 let rsync_src_path = parse_path !rsync_src
 and rsync_dst_path = parse_path !rsync_dst in
-Hashtbl.iter (fun folder _ -> rsync ~dry_run:(!dry_run) ~files_from:(folder ^ ".list") (add_to_path rsync_src_path folder) rsync_dst_path) files_to_sync;
+Hashtbl.iter (fun folder _ -> rsync ~dry_run:(!dry_run) ~files_from:(folder ^ ".list") (append_to_path rsync_src_path folder) rsync_dst_path) files_to_sync;
 
 
 (* Ending by cleaning working directory *)

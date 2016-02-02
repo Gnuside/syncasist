@@ -47,7 +47,7 @@ let parse_path p =
     and host = try matched_group 3 p with Not_found -> failwith (sprintf "Unable to parse ssh path (no host found): %s" p)
     and path = try matched_group 5 p with Not_found -> "."
     in Ssh({host= host; user = user; path = path})
-  end else Direct(p)A
+  end else Direct(p)
 
 (* Fonction to copy from a path to an other *)
 (* not recursive *)

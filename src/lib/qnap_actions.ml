@@ -38,7 +38,7 @@ let create line =
   let descr = (match action with
     | "Write" -> Write(acc_res)
     | "Delete" -> Delete(acc_res)
-    | "Rename" -> let acc_res_l = split (regexp "[ \\t]+->[ \\t]+") in
+    | "Rename" -> let acc_res_l = split (regexp "[ \\t]+->[ \\t]+") acc_res in
       Rename(List.nth acc_res_l 0, List.nth acc_res_l 1)
     | _ -> Other(action, acc_res)) in
   {
@@ -98,36 +98,38 @@ let parse_csv ?(kept_actions=[]) file =
 let string_of_descr = function
 | Rename(s,d) -> Printf.sprintf "Rename '%s' to '%s'" s d
 | Write(ar) -> "Write " ^ ar
+| Delete(ar) -> "Delete " ^ ar
+| Other(a, p) -> Printf.sprintf "%s %s" a p
 ;;
 let string_of_action a =
   Printf.sprintf "%10d-%s" a.id (string_of_descr a.descr)
 ;;
 
 let replace_descr a ndescr =
-  { id = a.id; kind=a.kind; date=a.date; time=a.time; user=a.user; user_id=a.user_id;
+  { id = a.id; kind=a.kind; date=a.date; time=a.time; user=a.user; user_ip=a.user_ip;
   descr=ndescr}
 ;;
 
 (* function that remove the head of the ressource path *)
 (* If the resource path doesn't start with the given cuting_path, then it raises Not_found *)
 let headcut_resource_path a cuting_path =
-  let cut_re = regexp (sprintf "^%s/\(.*\)$" cuting_path) in
+  let cut_re = regexp (Printf.sprintf "^%s/\\(.*\\)$" cuting_path) in
   (* create a new descr record *)
   let n_desc = match a.descr with
   | Rename(s,d) ->
-    let ns = if string_match cut_re s then matched_group p 1
+    let ns = if string_match cut_re s 0 then matched_group 1 s
       else raise Not_found
-    and nd = if string_match cut_re d then matched_group d 1
+    and nd = if string_match cut_re d 0 then matched_group 1 d
       else raise Not_found
     in Rename(ns,nd)
   | Delete(p) ->
-    if string_match cut_re p then Delete(matched_group p 1)
+    if string_match cut_re p 0 then Delete(matched_group 1 p)
     else raise Not_found
   | Write(p) ->
-    if string_match cut_re p then Write(matched_group p 1)
+    if string_match cut_re p 0 then Write(matched_group 1 p)
     else raise Not_found
   | Other(a,p) ->
-    if string_match cut_re p then Other(a,matched_group p 1)
+    if string_match cut_re p 0 then Other(a,matched_group 1 p)
     else raise Not_found
   in
   (* return a copy of the action *)
@@ -136,8 +138,8 @@ let headcut_resource_path a cuting_path =
 
 let get_acc_res a =
   match a.descr with
-  | Rename(a,_) -> a
-  | _(a) -> a
+  | Rename(a,_) | Other(_,a)-> a
+  | Delete(a) | Write(a) -> a
 ;;
 
 let merge_to_action_list action actions =
@@ -145,16 +147,16 @@ let merge_to_action_list action actions =
   try
     let entry = Hashtbl.find actions acc_res in
     match (entry.descr, action.descr) with
-    | (_, Delete(_) -> Hashtbl.delete actions acc_res
+    | (_, Delete(_)) -> Hashtbl.remove actions acc_res
     | (Write(_), Rename(_, dst)) ->
-      Hashtbl.delete actions acc_res;
-      Hashtbl.add action s (replace_descr action (Write(dst))
+      Hashtbl.remove actions acc_res;
+      Hashtbl.add actions dst (replace_descr action (Write(dst)))
     | (Other(a,ar),Rename(_,dst)) ->
-      Hashtbl.delete actions acc_res;
-      Hashtbl.add action s (replace_descr action (Other(a,dst))
+      Hashtbl.remove actions acc_res;
+      Hashtbl.add actions dst (replace_descr action (Other(a,dst)))
     | (b,a) -> failwith (
-      Printf.sprintf "Unable to merge %s with %s" (string_of_action b) (string_of_action a)
+      Printf.sprintf "Unable to merge %s with %s" (string_of_action entry) (string_of_action action)
       )
-  with Not_found -> Hashtbl.add actions action
+  with Not_found -> Hashtbl.add actions acc_res action
 ;;
   
