@@ -23,15 +23,18 @@ let get_all_csv csv_path date =
   List.sort (fun f1 f2 -> Pervasives.compare (get_file_i f1) (get_file_i f2)) (ls dst_dir)
 
 (* create a file listing of the folder corresponding to a folder to rsync *)
-and make_file_listing_folder folder actions_list =
-  let files_list = List.map Qnap_actions.get_acc_res actions_list in
+and make_file_listing_folder folder actions =
+  let get_keys h =
+    let keys = ref [] in
+    Hashtbl.iter (fun k _ -> keys := k :: !keys) h;
+    !keys
+  in
+  prerr_endline (Printf.sprintf "make listing - %s hash has %d files" folder (Hashtbl.length actions));
+  let files_list = get_keys actions in
+  prerr_endline (Printf.sprintf "%s has %d files" folder (List.length files_list));
   (* Generate file listing for rsync from one file path *)
   let make_file_listing oc folder file_path =
-    (* first remove folder name from file_path *)
-    let file_path_re = regexp (sprintf "^%s/\\(.*\\)$" folder) in
-    (* if we match the folder pattern, then we push the file without the folder itself *)
-    if string_match file_path_re file_path 0 then
-      output_string oc ((matched_group 1 file_path) ^ "\n")
+    output_string oc (file_path ^ "\n")
   in
   let oc = open_out (folder ^ ".list") in
   List.iter (make_file_listing oc folder) files_list
@@ -45,6 +48,7 @@ and since = ref (Unix.gettimeofday ())
 and csv_path = ref (Direct("."))
 and excludes = ref []
 and dry_run = ref true
+and actions_file = ref ""
 ;;
 
 (* function to gather the files to treat, sorted by folder *)
@@ -52,7 +56,7 @@ let push_from_csv csv_file =
   (* Get only the actions we want *)
   let actions = Qnap_actions.parse_csv ~kept_actions:["Write";"Delete";"Rename"] csv_file in
   
-  (* TODO: a function to dispatch actions to the right a folder container *)
+  (* This function dispatches actions to the right folder container *)
   let dispatch h folders action =
     (* function that return the folder matched and the action without the folder in its path *)
     let rec find_and_truncate_path action = function
@@ -67,16 +71,24 @@ let push_from_csv csv_file =
           find_and_truncate_path action other_folders
       end
     in
+    let push_action_in_folder f action =
+      let folder_hash =
+        try
+          Hashtbl.find h f
+        with Not_found -> begin
+          let n_h = Hashtbl.create 1000 in
+          Hashtbl.add h f n_h;
+          n_h
+        end
+      in
+      Qnap_actions.merge_to_action_list action folder_hash
+    in
     match folders with
-    | [] -> begin
-        try Hashtbl.replace h "" (action :: (Hashtbl.find h ""))
-        with Not_found -> Hashtbl.add h "" [action]
-      end
+    | [] -> push_action_in_folder "" action
     | folders -> begin
       try
         let (folder, n_action) = find_and_truncate_path action folders in
-        try Hashtbl.replace h folder (action :: (Hashtbl.find h folder))
-        with Not_found -> Hashtbl.add h folder [action]
+        push_action_in_folder folder n_action
       with Not_found -> () (* ignoring actions made in folders that are not in the list *)
     end
   in
@@ -101,6 +113,7 @@ and set_folders s =
 Arg.parse [
   ("--folders", Arg.String(set_folders), "Folders to sync (after the base URL). These are used as a filter at the beginning of the path of the files in the CSV." );
   ("--rsync-src", Arg.Set_string(rsync_src), "rsync's source folder/url." );
+  ("--output-actions", Arg.Set_string(actions_file), "write all the actions merged into this file");
   ("--rsync-dst", Arg.Set_string(rsync_dst), "rsync's destination folder/url." );
   ("--path-to-csv", Arg.String(fun s -> csv_path := parse_path s), "where to get the csv files. May be a ssh path.");
   ("--exclude", Arg.String(fun s -> excludes := (regexp s) :: !excludes ), "regexp to exclude from synchronisation.");
@@ -126,7 +139,25 @@ let csv_files = get_all_csv !csv_path !since in
 (* Get the files from all the csv_files *)
 List.iter (push_from_csv) csv_files;
 
-Hashtbl.iter (fun folder actions -> printf "Got %d files to sync for folder: %s.\n" (List.length actions) folder) files_to_sync;
+Hashtbl.iter (fun folder actions -> printf "Got %d files to sync for folder: %s.\n" (Hashtbl.length actions) folder) files_to_sync;
+(if !actions_file <> "" then
+  let oc = open_out !actions_file in
+  let fput_action oc _ action =
+    let s = Qnap_actions.string_of_action action
+    in output_string oc s; output_char oc '\n'
+  in
+  let fput_actions oc folder actions =
+    let folder_header = Printf.sprintf
+"
+######################################
+##### %26s #####
+######################################
+" folder in
+    output_string oc folder_header;
+    Hashtbl.iter (fput_action oc) actions
+  in
+  Hashtbl.iter (fput_actions oc) files_to_sync
+);
 Hashtbl.iter make_file_listing_folder files_to_sync;
 (* creating path from rsync_src and rsync_dst *)
 let rsync_src_path = parse_path !rsync_src

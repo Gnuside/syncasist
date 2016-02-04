@@ -138,25 +138,54 @@ let headcut_resource_path a cuting_path =
 
 let get_acc_res a =
   match a.descr with
-  | Rename(a,_) | Other(_,a)-> a
+  | Rename(_,a) | Other(_,a)-> a
   | Delete(a) | Write(a) -> a
 ;;
 
 let merge_to_action_list action actions =
   let acc_res = get_acc_res action in
+  prerr_endline (Printf.sprintf "Merge '%s' to actions(%d)" (string_of_action action) (Hashtbl.length actions));
+  (match action.descr with
+  | Rename(src,_) -> if Hashtbl.mem actions src then Hashtbl.remove actions src
+  | _ -> ());
   try
     let entry = Hashtbl.find actions acc_res in
-    match (entry.descr, action.descr) with
+    (match (entry.descr, action.descr) with
     | (_, Delete(_)) -> Hashtbl.remove actions acc_res
-    | (Write(_), Rename(_, dst)) ->
+    | (_, Rename(_,_)) ->
       Hashtbl.remove actions acc_res;
-      Hashtbl.add actions dst (replace_descr action (Write(dst)))
-    | (Other(a,ar),Rename(_,dst)) ->
+      Hashtbl.add actions acc_res (replace_descr action (Write(acc_res)))
+    | (Write(_), Write(_)) -> ()
+    | (Other(a,_),Write(_)) ->
       Hashtbl.remove actions acc_res;
-      Hashtbl.add actions dst (replace_descr action (Other(a,dst)))
-    | (b,a) -> failwith (
+      Hashtbl.add actions acc_res (replace_descr action (Other(a,acc_res)))
+    | (Delete(_),Write(_)) ->
+      Hashtbl.remove actions acc_res;
+      Hashtbl.add actions acc_res action
+    | (Rename(_,_),Write(_)) ->
+      Hashtbl.remove actions acc_res;
+      Hashtbl.add actions acc_res action
+    | (Other(a,_), Other(b,_)) ->
+      Hashtbl.remove actions acc_res;
+      let new_a = Printf.sprintf "%s then %s" a b in
+      Hashtbl.add actions acc_res (replace_descr action (Other(new_a,acc_res)))
+    | (Rename(_,_),Other(a,_)) ->
+      Hashtbl.remove actions acc_res;
+      Hashtbl.add actions acc_res action
+    | (Delete(_),Other(a,_)) ->
+      Hashtbl.remove actions acc_res;
+      Hashtbl.add actions acc_res action
+    | (Write(_),Other(a,_)) ->
+      Hashtbl.remove actions acc_res;
+      Hashtbl.add actions acc_res action
+    (*| (b,a) -> failwith (
       Printf.sprintf "Unable to merge %s with %s" (string_of_action entry) (string_of_action action)
-      )
-  with Not_found -> Hashtbl.add actions acc_res action
+      )*)
+    );
+    prerr_endline (Printf.sprintf "\t-> MERGED %s" (string_of_action action))
+  with Not_found -> begin
+    prerr_endline "\t-> NEW";
+    Hashtbl.add actions acc_res action
+  end
 ;;
   
