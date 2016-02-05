@@ -144,7 +144,7 @@ let get_acc_res a =
 
 let merge_to_action_list action actions =
   let acc_res = get_acc_res action in
-  prerr_endline (Printf.sprintf "Merge '%s' to actions(%d)" (string_of_action action) (Hashtbl.length actions));
+  (*prerr_endline (Printf.sprintf "Merge '%s' to actions(%d)" (string_of_action action) (Hashtbl.length actions));*)
   (match action.descr with
   | Rename(src,_) -> if Hashtbl.mem actions src then Hashtbl.remove actions src
   | _ -> ());
@@ -182,9 +182,9 @@ let merge_to_action_list action actions =
       Printf.sprintf "Unable to merge %s with %s" (string_of_action entry) (string_of_action action)
       )*)
     );
-    prerr_endline (Printf.sprintf "\t-> MERGED %s" (string_of_action action))
+    (*prerr_endline (Printf.sprintf "\t-> MERGED %s" (string_of_action action))*)
   with Not_found -> begin
-    prerr_endline "\t-> NEW";
+    (*prerr_endline "\t-> NEW";*)
     Hashtbl.add actions acc_res action
   end
 ;;

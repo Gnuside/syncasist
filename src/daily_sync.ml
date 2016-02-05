@@ -13,25 +13,40 @@ let get_file_i f =
 
 (* get all the csv files from a path regarding the current date *)
 let get_all_csv csv_path date =
-  (* create file pattern for the `ls` command *)
-  let filesPattern = sprintf "%s*.csv" (Permissive.string_of_date_basic (Unix.gettimeofday ()))
-  (* use current directory as copy destination *)
-  and dst_dir = Direct(".") in
-  (* copy the files from where they are to destination directory *)
-  ignore(copy (append_to_path csv_path filesPattern) dst_dir);
-  (* return the list of files we got sorted by creation date *)
-  List.sort (fun f1 f2 -> Pervasives.compare (get_file_i f1) (get_file_i f2)) (ls dst_dir)
+  let last = Unix.gettimeofday ()
+  and current = ref date
+  and files = ref [] in
+  while !current <= last do
+    (* create file pattern for the `ls` command *)
+    let filesPattern = sprintf "%s*.csv" (Permissive.string_of_date_basic !current)
+    (* use current directory as copy destination *)
+    and dst_dir = Direct(".") in
+    (* copy the files from where they are to destination directory *)
+    ignore(copy (append_to_path csv_path filesPattern) dst_dir);
+    (* return the list of files we got sorted by creation date *)
+    files := (List.sort (fun f1 f2 -> Pervasives.compare (get_file_i f1) (get_file_i f2)) (ls dst_dir))
+      @ !files;
+    current := !current +. (3600. *. 24.)
+  done;
+  prerr_endline "CSV files:";
+  List.iter (fun f -> prerr_endline f) !files;
+  !files
 
 (* create a file listing of the folder corresponding to a folder to rsync *)
 and make_file_listing_folder folder actions =
   let get_keys h =
     let keys = ref [] in
-    Hashtbl.iter (fun k _ -> keys := k :: !keys) h;
+    let filter_and_add k v =
+      match v.Qnap_actions.descr with
+      | Qnap_actions.Rename(_,_) | Qnap_actions.Write(_) -> keys := k :: !keys
+      | _ -> ()
+    in
+    Hashtbl.iter filter_and_add h;
     !keys
   in
-  prerr_endline (Printf.sprintf "make listing - %s hash has %d files" folder (Hashtbl.length actions));
+  prerr_endline (sprintf "make listing - %s hash has %d files" folder (Hashtbl.length actions));
   let files_list = get_keys actions in
-  prerr_endline (Printf.sprintf "%s has %d files" folder (List.length files_list));
+  prerr_endline (sprintf "%s has %d files" folder (List.length files_list));
   (* Generate file listing for rsync from one file path *)
   let make_file_listing oc folder file_path =
     output_string oc (file_path ^ "\n")
@@ -116,9 +131,9 @@ Arg.parse [
   ("--output-actions", Arg.Set_string(actions_file), "write all the actions merged into this file");
   ("--rsync-dst", Arg.Set_string(rsync_dst), "rsync's destination folder/url." );
   ("--path-to-csv", Arg.String(fun s -> csv_path := parse_path s), "where to get the csv files. May be a ssh path.");
-  ("--exclude", Arg.String(fun s -> excludes := (regexp s) :: !excludes ), "regexp to exclude from synchronisation.");
+  ("--exclude", Arg.String(fun s -> excludes := s :: !excludes ), "regexp to exclude from synchronisation.");
   ("--not-dry", Arg.Clear(dry_run), "Prevent rsync to run in dry-run. Do it when you are sure of what you do.");
-  (*("--since", Arg.String(set_since_date), "Set the since date (default today only)"); *)
+  ("--since", Arg.String(set_since_date), "Set the since date (default today only)");
   ] ignore "Usage: daily_sync.ml <csv file> ..."
 ;;
 
@@ -147,7 +162,7 @@ Hashtbl.iter (fun folder actions -> printf "Got %d files to sync for folder: %s.
     in output_string oc s; output_char oc '\n'
   in
   let fput_actions oc folder actions =
-    let folder_header = Printf.sprintf
+    let folder_header = sprintf
 "
 ######################################
 ##### %26s #####
@@ -162,7 +177,13 @@ Hashtbl.iter make_file_listing_folder files_to_sync;
 (* creating path from rsync_src and rsync_dst *)
 let rsync_src_path = parse_path !rsync_src
 and rsync_dst_path = parse_path !rsync_dst in
-Hashtbl.iter (fun folder _ -> rsync ~dry_run:(!dry_run) ~files_from:(folder ^ ".list") (append_to_path rsync_src_path folder) rsync_dst_path) files_to_sync;
+let sync folder _ =
+  prerr_endline (sprintf "syncing %s from %s..." folder (Sys.getcwd ()));
+  rsync ~verbose:true ~ignore_errors:true ~itemize_changes:true ~dry_run:(!dry_run)
+    ~files_from:(folder ^ ".list") ~excludes:(!excludes)
+    (append_to_path rsync_src_path folder) rsync_dst_path
+in
+Hashtbl.iter sync files_to_sync;
 
 
 (* Ending by cleaning working directory *)

@@ -77,20 +77,40 @@ and ls path =
   List.rev !l_file
 
 (* launch rsync command *)
-and rsync ?(dry_run=true) ?(info="flist2,progress1") ?files_from src dst =
+and rsync ?(ignore_errors=false) ?delete ?(dry_run=true)
+          ?(itemize_changes=false) 
+          ?(info="flist2,progress1") ?files_from
+          ?(excludes=[]) ?(verbose=false)
+          src dst =
   let src_s = string_of_path src
   and dst_s = string_of_path dst
   and opt = ref ""
   in
+  (* adding verbose options *)
+  (if verbose then opt := sprintf "%s --verbose --verbose" !opt);
+  (* adding excludes options *)
+  (if excludes <> [] then
+    List.iter (fun e -> opt := sprintf "%s --exclude=%s" !opt e) excludes);
+  (* adding itemize-changes options *)
+  (if itemize_changes then opt := sprintf "%s --itemize-changes" !opt);
   (* adding dry_run options *)
-  (if dry_run then opt := sprintf "%s -i --dry-run" !opt);
+  (if dry_run then opt := sprintf "%s --dry-run" !opt);
+  (* adding ignore-errors options *)
+  (if ignore_errors then opt := sprintf "%s --ignore-errors" !opt);
+  (* adding delete options *)
+  (match delete with
+  | None -> ()
+  | Some(`During) -> opt := sprintf "%s --delete-during" !opt
+  | Some(`Before) -> opt := sprintf "%s --delete-before" !opt
+  | Some(`After) -> opt := sprintf "%s --delete-after" !opt
+  );
   (* adding info options *)
   opt := sprintf "%s --info=%s" !opt info;
   (* adding files-from option *)
   (match files_from with
     | None -> ()
     | Some(ff) -> opt := sprintf "%s --files-from=\"%s\"" !opt ff);
-  let cmd = sprintf "rsync -ra -hv %s %s %s" !opt src_s dst_s in
+  let cmd = sprintf "rsync -a -hv %s %s %s" !opt src_s dst_s in
   print_endline cmd;
-  ignore (Sys.command cmd)
+  ignore (Unix.system cmd)
 ;;
