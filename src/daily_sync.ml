@@ -4,33 +4,41 @@ open ISO8601
 open Str
 
 let get_file_i f =
-  let file_re = regexp "[0-9]\\+\\(-\\([0-9]\\)\\)\\.csv" in
-  if (string_match file_re f 0) then
-    int_of_string (matched_group 2 f)
+  let first_num_re = regexp "\\([0-9]\\+\\)\\(-.*\\)?\\.csv"
+  and file_re = regexp "-\\([0-9]\\)" in
+  if string_match first_num_re f 0 then
+    let idx = matched_group 2 f in
+    let n1 = int_of_string (matched_group 1 f)
+    and n0 =
+      if (string_match file_re idx 0) then
+        int_of_string (matched_group 1 idx)
+      else 0
+    in (n1 * 100) + n0 (* working well on 64 bits proc *)
   else 0
 ;;
 
 
 (* get all the csv files from a path regarding the current date *)
-let get_all_csv csv_path date =
-  let last = Unix.gettimeofday ()
-  and current = ref date
-  and files = ref [] in
+let get_all_csv csv_path since upto =
+  let last = upto
+  and current = ref since
+  (* use current directory as copy destination *)
+  and dst_dir = Direct(".")
+  in
   while !current <= last do
     (* create file pattern for the `ls` command *)
-    let filesPattern = sprintf "%s*.csv" (Permissive.string_of_date_basic !current)
-    (* use current directory as copy destination *)
-    and dst_dir = Direct(".") in
+    let filesPattern = sprintf "%s*.csv" (Permissive.string_of_date_basic !current) in
     (* copy the files from where they are to destination directory *)
     ignore(copy (append_to_path csv_path filesPattern) dst_dir);
-    (* return the list of files we got sorted by creation date *)
-    files := (List.sort (fun f1 f2 -> Pervasives.compare (get_file_i f1) (get_file_i f2)) (ls dst_dir))
-      @ !files;
     current := !current +. (3600. *. 24.)
   done;
+  prerr_endline "CSV files (unsorted):";
+  List.iter (fun f -> prerr_endline f) (ls dst_dir);
+  let files = (List.sort (fun f1 f2 -> Pervasives.compare (get_file_i f1) (get_file_i f2)) (ls dst_dir)) in
   prerr_endline "CSV files:";
-  List.iter (fun f -> prerr_endline f) !files;
-  !files
+  List.iter (fun f -> prerr_endline f) files;
+  (* return the list of files we got sorted by creation date *)
+  files
 
 (* create a file listing of the folder corresponding to a folder to rsync *)
 and make_file_listing_folder folder actions =
@@ -49,10 +57,11 @@ and make_file_listing_folder folder actions =
   prerr_endline (sprintf "%s has %d files" folder (List.length files_list));
   (* Generate file listing for rsync from one file path *)
   let make_file_listing oc folder file_path =
-    output_string oc (file_path ^ "\n")
+    output_string oc (sprintf "%s/%s\n" folder file_path)
   in
-  let oc = open_out (folder ^ ".list") in
-  List.iter (make_file_listing oc folder) files_list
+  let oc = open_out_gen [Open_append;Open_creat] 0o640 "files.list" in
+  List.iter (make_file_listing oc folder) files_list;
+  close_out oc
 ;;
 
 let folder_list = ref []
@@ -60,6 +69,7 @@ and files_to_sync = Hashtbl.create 10 (* file list by folder, they will be passe
 and rsync_src = ref ""
 and rsync_dst = ref ""
 and since = ref (Unix.gettimeofday ())
+and upto = ref (Unix.gettimeofday ())
 and csv_path = ref (Direct("."))
 and excludes = ref []
 and dry_run = ref true
@@ -119,6 +129,13 @@ let set_since_date s =
     prerr_endline "Please use year-month-day date format";
     exit 1
   end
+and set_upto_date s =
+  try begin
+    upto := Permissive.date s
+  end with Failure(_) -> begin
+    prerr_endline "Please use year-month-day date format";
+    exit 1
+  end
 and set_folders s =
   let separator = regexp "[ \t]*,[ \t]*" in
   folder_list := split separator s
@@ -128,12 +145,13 @@ and set_folders s =
 Arg.parse [
   ("--folders", Arg.String(set_folders), "Folders to sync (after the base URL). These are used as a filter at the beginning of the path of the files in the CSV." );
   ("--rsync-src", Arg.Set_string(rsync_src), "rsync's source folder/url." );
-  ("--output-actions", Arg.Set_string(actions_file), "write all the actions merged into this file");
   ("--rsync-dst", Arg.Set_string(rsync_dst), "rsync's destination folder/url." );
+  ("--output-actions", Arg.Set_string(actions_file), "write all the actions merged into this file");
   ("--path-to-csv", Arg.String(fun s -> csv_path := parse_path s), "where to get the csv files. May be a ssh path.");
   ("--exclude", Arg.String(fun s -> excludes := s :: !excludes ), "regexp to exclude from synchronisation.");
   ("--not-dry", Arg.Clear(dry_run), "Prevent rsync to run in dry-run. Do it when you are sure of what you do.");
-  ("--since", Arg.String(set_since_date), "Set the since date (default today only)");
+  ("--since", Arg.String(set_since_date), "Set the since date (default today)");
+  ("--upto", Arg.String(set_upto_date), "Set the upto date (default today)");
   ] ignore "Usage: daily_sync.ml <csv file> ..."
 ;;
 
@@ -150,7 +168,7 @@ Unix.mkdir working_dir 0o700;
 Sys.chdir working_dir;
 
 (* Get the csv_files *)
-let csv_files = get_all_csv !csv_path !since in
+let csv_files = get_all_csv !csv_path !since !upto in
 (* Get the files from all the csv_files *)
 List.iter (push_from_csv) csv_files;
 
@@ -177,14 +195,28 @@ Hashtbl.iter make_file_listing_folder files_to_sync;
 (* creating path from rsync_src and rsync_dst *)
 let rsync_src_path = parse_path !rsync_src
 and rsync_dst_path = parse_path !rsync_dst in
+(*
+let cmd = ref "#/bin/sh\n\n" in
 let sync folder _ =
   prerr_endline (sprintf "syncing %s from %s..." folder (Sys.getcwd ()));
   rsync ~verbose:true ~ignore_errors:true ~itemize_changes:true ~dry_run:(!dry_run)
     ~files_from:(folder ^ ".list") ~excludes:(!excludes)
-    (append_to_path rsync_src_path folder) rsync_dst_path
+    (append_to_path rsync_src_path folder) (append_to_path rsync_dst_path folder)
 in
-Hashtbl.iter sync files_to_sync;
+let map_sync_cmd folder _ =
+  let sync_cmd = sync folder "" in
+    cmd := sprintf "%s\n%s" !cmd sync_cmd
+in
+Hashtbl.iter map_sync_cmd files_to_sync;
+let script_oc = open_out_gen [Open_creat;Open_wronly] 0o755 "rsync_cmds.sh" in
+output_string script_oc !cmd;
+close_out script_oc;
+ignore (Unix.system (sprintf "%s/rsync_cmds.sh" working_dir));
+*)
 
+rsync ~verbose:true ~ignore_errors:true ~itemize_changes:true ~dry_run:(!dry_run)
+  ~files_from:("files.list") ~excludes:(!excludes)
+  rsync_src_path rsync_dst_path;
 
 (* Ending by cleaning working directory *)
 Sys.chdir old_wdir;

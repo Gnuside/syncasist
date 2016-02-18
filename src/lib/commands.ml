@@ -15,13 +15,29 @@ type path_t =
 (* convert a path to it's classic form : *)
 (* SSH : user@host:path when user is not empty, host:path else *)
 (* Local: just as it is *)
-let string_of_path = function
-| Ssh(s) -> begin
-  match s.user with
-  | None -> sprintf "%s:%s" s.host s.path
-  | Some(user) -> sprintf "%s@%s:%s" user s.host s.path
-end
-| Direct(s) -> s
+let string_of_path ?(ending_slash=false) v =
+  let res = (match v with
+    | Ssh(s) -> begin
+      match s.user with
+      | None -> sprintf "%s:%s" s.host s.path
+      | Some(user) -> sprintf "%s@%s:%s" user s.host s.path
+    end
+    | Direct(s) -> s) in
+  if ending_slash && ((String.get res ((String.length res) - 1)) <> '/') then
+    res ^ "/"
+  else res
+
+(** Run given shell command. Get return code & STDOUT *)
+and syscall cmd =
+    let ic, oc = Unix.open_process cmd in
+    let buf = Buffer.create 16 in
+    (try
+        while true do
+            Buffer.add_channel buf ic 1
+        done
+    with End_of_file -> ());
+    let ret_status = Unix.close_process (ic, oc) in
+    ( ret_status, Buffer.contents buf)
 
 (* append a string to the path *)
 and append_to_path path to_append =
@@ -82,15 +98,15 @@ and rsync ?(ignore_errors=false) ?delete ?(dry_run=true)
           ?(info="flist2,progress1") ?files_from
           ?(excludes=[]) ?(verbose=false)
           src dst =
-  let src_s = string_of_path src
-  and dst_s = string_of_path dst
+  let src_s = string_of_path ~ending_slash:true src
+  and dst_s = string_of_path ~ending_slash:true dst
   and opt = ref ""
   in
   (* adding verbose options *)
-  (if verbose then opt := sprintf "%s --verbose --verbose" !opt);
+  (if verbose then opt := sprintf "%s -vvv" !opt);
   (* adding excludes options *)
   (if excludes <> [] then
-    List.iter (fun e -> opt := sprintf "%s --exclude=%s" !opt e) excludes);
+    List.iter (fun e -> opt := sprintf "%s --exclude='%s'" !opt e) excludes);
   (* adding itemize-changes options *)
   (if itemize_changes then opt := sprintf "%s --itemize-changes" !opt);
   (* adding dry_run options *)
@@ -110,7 +126,8 @@ and rsync ?(ignore_errors=false) ?delete ?(dry_run=true)
   (match files_from with
     | None -> ()
     | Some(ff) -> opt := sprintf "%s --files-from=\"%s\"" !opt ff);
-  let cmd = sprintf "rsync -a -hv %s %s %s" !opt src_s dst_s in
+  let cmd = sprintf "rsync -a -h %s %s %s >> %s.log 2>&1" !opt src_s dst_s (ISO8601.Permissive.string_of_datetime_basic (Unix.gettimeofday ())) in
+  (*cmd*)
   print_endline cmd;
-  ignore (Unix.system cmd)
+  ignore (syscall cmd)
 ;;
