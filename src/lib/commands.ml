@@ -93,7 +93,7 @@ and ls path =
   List.rev !l_file
 
 (* launch rsync command *)
-and rsync ?(ignore_errors=false) ?delete ?(dry_run=true)
+and rsync_cmd ?(ignore_errors=false) ?delete ?(dry_run=true)
           ?(itemize_changes=false) 
           ?(info="flist2,progress1") ?files_from
           ?(excludes=[]) ?(verbose=false)
@@ -127,7 +127,26 @@ and rsync ?(ignore_errors=false) ?delete ?(dry_run=true)
     | None -> ()
     | Some(ff) -> opt := sprintf "%s --files-from=\"%s\"" !opt ff);
   let cmd = sprintf "rsync -a -h %s %s %s >> %s.log 2>&1" !opt src_s dst_s (ISO8601.Permissive.string_of_datetime_basic (Unix.gettimeofday ())) in
-  (*cmd*)
+  cmd
+;;
+let rsync ?(ignore_errors=false) ?delete ?(dry_run=true)
+          ?(itemize_changes=false) 
+          ?(info="flist2,progress1") ?files_from
+          ?(excludes=[]) ?(verbose=false)
+          src dst =
+  let cmd = match (delete,files_from) with
+    | (None,None) -> rsync_cmd ~ignore_errors ~dry_run ~itemize_changes ~info ~excludes ~verbose src dst
+    | (None,Some(files_from_some)) -> rsync_cmd ~ignore_errors ~dry_run ~itemize_changes ~info ~files_from:files_from_some ~excludes ~verbose src dst
+    | (Some(delete_some),None) -> rsync_cmd ~ignore_errors ~delete:delete_some ~dry_run ~itemize_changes ~info ~excludes ~verbose src dst
+    | (Some(delete_some),Some(files_from_some)) -> rsync_cmd ~ignore_errors ~delete:delete_some ~dry_run ~itemize_changes ~info ~files_from:files_from_some ~excludes ~verbose src dst
+  in
   print_endline cmd;
   ignore (syscall cmd)
+;;
+let clear_wait () =
+  try
+    while true do
+      ignore (wait ())
+    done
+  with Unix.Unix_error(Unix.ECHILD, "wait", _) -> ()
 ;;

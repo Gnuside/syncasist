@@ -74,6 +74,8 @@ and csv_path = ref (Direct("."))
 and excludes = ref []
 and dry_run = ref true
 and actions_file = ref ""
+and rsync_cascade = ref ""
+and rsync_cascade_nb = ref 1
 ;;
 
 (* function to gather the files to treat, sorted by folder *)
@@ -152,6 +154,8 @@ Arg.parse [
   ("--not-dry", Arg.Clear(dry_run), "Prevent rsync to run in dry-run. Do it when you are sure of what you do.");
   ("--since", Arg.String(set_since_date), "Set the since date (default today)");
   ("--upto", Arg.String(set_upto_date), "Set the upto date (default today)");
+  ("--cascade-to", Arg.Set_string(rsync_cascade), "rsync's cascade destination." );
+  ("--cascade-threads", Arg.Set_int(rsync_cascade_nb), "Number of parallel processes." );
   ] ignore "Usage: daily_sync.ml <csv file> ..."
 ;;
 
@@ -194,7 +198,8 @@ Hashtbl.iter (fun folder actions -> printf "Got %d files to sync for folder: %s.
 Hashtbl.iter make_file_listing_folder files_to_sync;
 (* creating path from rsync_src and rsync_dst *)
 let rsync_src_path = parse_path !rsync_src
-and rsync_dst_path = parse_path !rsync_dst in
+and rsync_dst_path = parse_path !rsync_dst
+and rsync_cascade_path = parse_path !rsync_cascade in
 (*
 let cmd = ref "#/bin/sh\n\n" in
 let sync folder _ =
@@ -217,6 +222,12 @@ ignore (Unix.system (sprintf "%s/rsync_cmds.sh" working_dir));
 rsync ~verbose:true ~ignore_errors:true ~itemize_changes:true ~dry_run:(!dry_run)
   ~files_from:("files.list") ~excludes:(!excludes)
   rsync_src_path rsync_dst_path;
+
+clear_wait ();
+
+let fic = open_in "files.list" in
+Cascade.run !dry_run !excludes rsync_dst_path rsync_cascade_path fic !rsync_cascade_nb;
+close_in fic;
 
 (* Ending by cleaning working directory *)
 Sys.chdir old_wdir;
