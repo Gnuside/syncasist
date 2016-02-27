@@ -225,9 +225,7 @@ rsync ~verbose:true ~ignore_errors:true ~itemize_changes:true ~dry_run:(!dry_run
 
 clear_wait ();
 
-let fic = open_in "files.list" in
-Cascade.run !dry_run !excludes rsync_dst_path rsync_cascade_path fic !rsync_cascade_nb;
-close_in fic;
+Cascade.run !dry_run !excludes rsync_dst_path rsync_cascade_path "files.list" !rsync_cascade_nb;
 
 (* Ending by cleaning working directory *)
 Sys.chdir old_wdir;
