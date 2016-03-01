@@ -75,6 +75,7 @@ and excludes = ref []
 and dry_run = ref true
 and actions_file = ref ""
 and rsync_cascade = ref ""
+and excludes_cascade = ref []
 and rsync_cascade_nb = ref 1
 ;;
 
@@ -155,6 +156,7 @@ Arg.parse [
   ("--since", Arg.String(set_since_date), "Set the since date (default today)");
   ("--upto", Arg.String(set_upto_date), "Set the upto date (default today)");
   ("--cascade-to", Arg.Set_string(rsync_cascade), "rsync's cascade destination." );
+  ("--cascade-exclude", Arg.String(fun s -> excludes_cascade := s :: !excludes_cascade ), "rsync's cascade excludes." );
   ("--cascade-threads", Arg.Set_int(rsync_cascade_nb), "Number of parallel processes." );
   ] ignore "Usage: daily_sync.ml <csv file> ..."
 ;;
@@ -220,7 +222,7 @@ ignore (Unix.system (sprintf "%s/rsync_cmds.sh" working_dir));
 *)
 
 rsync ~verbose:true ~ignore_errors:true ~itemize_changes:true ~dry_run:(!dry_run)
-  ~files_from:("files.list") ~excludes:(!excludes)
+  ~files_from:("files.list") ~excludes:(!excludes_cascade)
   rsync_src_path rsync_dst_path;
 
 clear_wait ();

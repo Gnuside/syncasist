@@ -94,7 +94,7 @@ and ls path =
 
 (* launch rsync command *)
 and rsync_cmd ?(ignore_errors=false) ?delete ?(dry_run=true)
-          ?(itemize_changes=false) 
+          ?(itemize_changes=false) ?(compress=true)
           ?(info="flist2,progress1") ?files_from
           ?(excludes=[]) ?(verbose=false)
           src dst =
@@ -104,6 +104,8 @@ and rsync_cmd ?(ignore_errors=false) ?delete ?(dry_run=true)
   in
   (* adding verbose options *)
   (if verbose then opt := sprintf "%s -vvv" !opt);
+  (* adding compress option *)
+  (if compress then opt := !opt ^ " -z");
   (* adding excludes options *)
   (if excludes <> [] then
     List.iter (fun e -> opt := sprintf "%s --exclude='%s'" !opt e) excludes);
