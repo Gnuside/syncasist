@@ -132,15 +132,15 @@ and rsync_cmd ?(ignore_errors=false) ?delete ?(dry_run=true)
   cmd
 ;;
 let rsync ?(ignore_errors=false) ?delete ?(dry_run=true)
-          ?(itemize_changes=false) 
+          ?(itemize_changes=false) ?(compress=true) 
           ?(info="flist2,progress1") ?files_from
           ?(excludes=[]) ?(verbose=false)
           src dst =
   let cmd = match (delete,files_from) with
-    | (None,None) -> rsync_cmd ~ignore_errors ~dry_run ~itemize_changes ~info ~excludes ~verbose src dst
-    | (None,Some(files_from_some)) -> rsync_cmd ~ignore_errors ~dry_run ~itemize_changes ~info ~files_from:files_from_some ~excludes ~verbose src dst
-    | (Some(delete_some),None) -> rsync_cmd ~ignore_errors ~delete:delete_some ~dry_run ~itemize_changes ~info ~excludes ~verbose src dst
-    | (Some(delete_some),Some(files_from_some)) -> rsync_cmd ~ignore_errors ~delete:delete_some ~dry_run ~itemize_changes ~info ~files_from:files_from_some ~excludes ~verbose src dst
+    | (None,None) -> rsync_cmd ~compress ~ignore_errors ~dry_run ~itemize_changes ~info ~excludes ~verbose src dst
+    | (None,Some(files_from_some)) -> rsync_cmd ~compress ~ignore_errors ~dry_run ~itemize_changes ~info ~files_from:files_from_some ~excludes ~verbose src dst
+    | (Some(delete_some),None) -> rsync_cmd ~compress ~ignore_errors ~delete:delete_some ~dry_run ~itemize_changes ~info ~excludes ~verbose src dst
+    | (Some(delete_some),Some(files_from_some)) -> rsync_cmd ~compress ~ignore_errors ~delete:delete_some ~dry_run ~itemize_changes ~info ~files_from:files_from_some ~excludes ~verbose src dst
   in
   print_endline cmd;
   ignore (syscall cmd)

@@ -222,12 +222,12 @@ ignore (Unix.system (sprintf "%s/rsync_cmds.sh" working_dir));
 *)
 
 rsync ~verbose:true ~ignore_errors:true ~itemize_changes:true ~dry_run:(!dry_run)
-  ~files_from:("files.list") ~excludes:(!excludes_cascade)
+  ~files_from:("files.list") ~excludes:(!excludes) ~info:"flist0,progress2,stats2"
   rsync_src_path rsync_dst_path;
 
 clear_wait ();
 
-Cascade.run !dry_run !excludes rsync_dst_path rsync_cascade_path "files.list" !rsync_cascade_nb;
+Cascade.run !dry_run !excludes_cascade rsync_dst_path rsync_cascade_path "files.list" !rsync_cascade_nb;
 
 (* Ending by cleaning working directory *)
 Sys.chdir old_wdir;
