@@ -73,6 +73,7 @@ and upto = ref (Unix.gettimeofday ())
 and csv_path = ref (Direct("."))
 and excludes = ref []
 and dry_run = ref true
+and no_info = ref false
 and actions_file = ref ""
 and rsync_cascade = ref ""
 and excludes_cascade = ref []
@@ -158,6 +159,7 @@ Arg.parse [
   ("--cascade-to", Arg.Set_string(rsync_cascade), "rsync's cascade destination." );
   ("--cascade-exclude", Arg.String(fun s -> excludes_cascade := s :: !excludes_cascade ), "rsync's cascade excludes." );
   ("--cascade-threads", Arg.Set_int(rsync_cascade_nb), "Number of parallel processes." );
+  ("--no-info", Arg.Set(no_info), "Prevent displaying info, usefull also when --info is not supported on remote rsync" );
   ] ignore "Usage: daily_sync.ml <csv file> ..."
 ;;
 
@@ -201,7 +203,8 @@ Hashtbl.iter make_file_listing_folder files_to_sync;
 (* creating path from rsync_src and rsync_dst *)
 let rsync_src_path = parse_path !rsync_src
 and rsync_dst_path = parse_path !rsync_dst
-and rsync_cascade_path = parse_path !rsync_cascade in
+and rsync_cascade_path = parse_path !rsync_cascade
+and info = if !no_info then "" else "flist0,progress2,stats2" in
 (*
 let cmd = ref "#/bin/sh\n\n" in
 let sync folder _ =
@@ -222,7 +225,7 @@ ignore (Unix.system (sprintf "%s/rsync_cmds.sh" working_dir));
 *)
 
 rsync ~verbose:true ~ignore_errors:true ~itemize_changes:true ~dry_run:(!dry_run)
-  ~files_from:("files.list") ~excludes:(!excludes) ~info:"flist0,progress2,stats2"
+  ~files_from:("files.list") ~excludes:(!excludes) ~info
   rsync_src_path rsync_dst_path;
 
 clear_wait ();

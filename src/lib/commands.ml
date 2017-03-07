@@ -123,7 +123,7 @@ and rsync_cmd ?(ignore_errors=false) ?delete ?(dry_run=true)
   | Some(`After) -> opt := sprintf "%s --delete-after" !opt
   );
   (* adding info options *)
-  opt := sprintf "%s --info=%s" !opt info;
+  (if info <> "" then opt := sprintf "%s --info=%s" !opt info);
   (* adding files-from option *)
   (match files_from with
     | None -> ()
