@@ -11,4 +11,4 @@ clean:
 	ocamlbuild -use-ocamlfind $@
 
 install: $(PROGRAMS)
-	echo ocamlfind install plp-sensors META $(wildcard _build/*.cm[xioa]) $(wildcard _build/*.cmxa) $(wildcard *.o) $(wildcard _build/*.a) $(wildcard *.ml*)
+	echo ocamlfind install syncasist META $(wildcard _build/*.cm[xioa]) $(wildcard _build/*.cmxa) $(wildcard *.o) $(wildcard _build/*.a) $(wildcard *.ml*)

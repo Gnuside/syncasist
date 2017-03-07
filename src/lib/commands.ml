@@ -118,6 +118,7 @@ and rsync_cmd ?(ignore_errors=false) ?delete ?(dry_run=true)
   (* adding delete options *)
   (match delete with
   | None -> ()
+  | Some(`Delete) -> opt := sprintf "%s --delete" !opt
   | Some(`During) -> opt := sprintf "%s --delete-during" !opt
   | Some(`Before) -> opt := sprintf "%s --delete-before" !opt
   | Some(`After) -> opt := sprintf "%s --delete-after" !opt
@@ -131,7 +132,7 @@ and rsync_cmd ?(ignore_errors=false) ?delete ?(dry_run=true)
   let cmd = sprintf "rsync -a -h %s %s %s >> %s.log 2>&1" !opt src_s dst_s (ISO8601.Permissive.string_of_datetime_basic (Unix.gettimeofday ())) in
   cmd
 ;;
-let rsync ?(ignore_errors=false) ?delete ?(dry_run=true)
+let rsync ?(ignore_errors=false) ?(delete=None) ?(dry_run=true)
           ?(itemize_changes=false) ?(compress=true) 
           ?(info="flist2,progress1") ?files_from
           ?(excludes=[]) ?(verbose=false)

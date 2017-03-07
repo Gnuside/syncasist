@@ -1,5 +1,5 @@
-Laborne.taxi embedded software for Raspberry Pi
+OCaml utility to use rsync on several folders and with cascade sync to an other server
 
-This is an application intended to be run as root and as a daemon.
-It will manage a button, led and a GPRS modem for it's internet
-connection.
+This is an application intended to be used with rsync
+allowing you some flexible parametring and multiple folders
+synchronisation.

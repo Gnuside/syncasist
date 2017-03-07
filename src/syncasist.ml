@@ -74,6 +74,7 @@ and csv_path = ref (Direct("."))
 and excludes = ref []
 and dry_run = ref true
 and no_info = ref false
+and _delete = ref None
 and actions_file = ref ""
 and rsync_cascade = ref ""
 and excludes_cascade = ref []
@@ -143,6 +144,13 @@ and set_upto_date s =
 and set_folders s =
   let separator = regexp "[ \t]*,[ \t]*" in
   folder_list := split separator s
+and set_delete s = 
+  _delete := (match String.lowercase s with
+    | "delete" -> Some(`Delete)
+    | "during" -> Some(`During)
+    | "before" -> Some(`Before)
+    | "after" -> Some(`After)
+    | _ -> None)
 ;;
 
 
@@ -160,7 +168,8 @@ Arg.parse [
   ("--cascade-exclude", Arg.String(fun s -> excludes_cascade := s :: !excludes_cascade ), "rsync's cascade excludes." );
   ("--cascade-threads", Arg.Set_int(rsync_cascade_nb), "Number of parallel processes." );
   ("--no-info", Arg.Set(no_info), "Prevent displaying info, usefull also when --info is not supported on remote rsync" );
-  ] ignore "Usage: daily_sync.ml <csv file> ..."
+  ("--delete", Arg.String(set_delete), "Transfert the deletion through the sync.");
+  ] ignore "Usage: syncasist <csv file> ..."
 ;;
 
 (* Check if we have enough information to run the program *)
@@ -170,7 +179,7 @@ if !rsync_src = "" || !rsync_dst = "" then begin
 end;
 
 (* First: create a temporary directory where to work *)
-let working_dir = "/tmp/daily_sync-" ^ (Permissive.string_of_datetime_basic (Unix.gettimeofday ()))
+let working_dir = "/tmp/syncasist-" ^ (Permissive.string_of_datetime_basic (Unix.gettimeofday ()))
 and old_wdir = Sys.getcwd () in
 Unix.mkdir working_dir 0o700;
 Sys.chdir working_dir;
@@ -204,6 +213,7 @@ Hashtbl.iter make_file_listing_folder files_to_sync;
 let rsync_src_path = parse_path !rsync_src
 and rsync_dst_path = parse_path !rsync_dst
 and rsync_cascade_path = parse_path !rsync_cascade
+and delete = !_delete
 and info = if !no_info then "" else "flist0,progress2,stats2" in
 (*
 let cmd = ref "#/bin/sh\n\n" in
@@ -225,7 +235,7 @@ ignore (Unix.system (sprintf "%s/rsync_cmds.sh" working_dir));
 *)
 
 rsync ~verbose:true ~ignore_errors:true ~itemize_changes:true ~dry_run:(!dry_run)
-  ~files_from:("files.list") ~excludes:(!excludes) ~info
+  ~files_from:("files.list") ~excludes:(!excludes) ~info ~delete
   rsync_src_path rsync_dst_path;
 
 clear_wait ();
